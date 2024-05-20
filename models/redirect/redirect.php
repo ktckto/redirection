@@ -281,7 +281,23 @@ class Red_Item {
 
 		return self::get_old_url( $url );
 	}
+	/**
+	 * Get all redirects that match regex items
+	 * @return array
+	 */
+	public static function get_regex_items() {
+		global $wpdb;
+		$cache_key        = $wpdb->prefix . 'redirection_items_regex';
+		$cache_group      = 'redirection';
+		$found_regex_rows = false;
+		$rows             = wp_cache_get( $cache_key, $cache_group, false, $found_regex_rows );
+		if ( ! $found_regex_rows ) {
+			$rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}redirection_items WHERE match_url= 'regex' AND status='enabled'" );
+			wp_cache_set( $cache_key, $rows, $cache_group );
+		}
 
+		return $rows;
+	}
 	/**
 	 * Get a redirect that matches a URL
 	 *
@@ -301,8 +317,9 @@ class Red_Item {
 
 		if ( $rows === false ) {
 			// Nothing in cache, get from DB
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}redirection_items WHERE match_url IN (%s, %s, 'regex') AND status='enabled' LIMIT %d", $url_without, $url_with, self::MAX_REDIRECTS ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}redirection_items WHERE match_url IN (%s, %s) AND status='enabled' LIMIT %d", $url_without, $url_with, self::MAX_REDIRECTS ) );
 		}
+		$rows = array_merge( self::get_regex_items(), $rows );
 
 		$items = [];
 
@@ -1048,5 +1065,19 @@ class Red_Item {
 			'last_access' => date( 'Y-m-d H:i:s', $this->last_access ),
 			'status'      => $this->is_enabled() ? 'enabled' : 'disabled',
 		] );
+	}
+}
+add_action( 'redirection_redirect_updated', 'wp_redirection_flush_cache_on_update' );
+add_action( 'redirection_redirect_deleted', 'wp_redirection_flush_cache_on_update' );
+add_action( 'redirection_redirect_enabled', 'wp_redirection_flush_cache_on_update' );
+add_action( 'redirection_redirect_disabled', 'wp_redirection_flush_cache_on_update' );
+
+
+function wp_redirection_flush_cache_on_update(): void {
+	$cache_group = 'redirection';
+	if ( function_exists( 'wp_cache_flush_group' ) ) {
+		wp_cache_flush_group( $cache_group );
+	} else {
+		wp_cache_flush();
 	}
 }
